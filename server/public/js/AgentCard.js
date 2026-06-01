@@ -96,6 +96,18 @@ function AgentCard({ agent }) {
         {/* CPU Temperature */}
         {renderCpuTemp()}
 
+      {/* Details toggle button */}
+      {hasInventory && (
+        <button
+          type="button"
+          className="btn-details"
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+        >
+          {expanded ? '▲ Hide Details' : '▼ Show Details'}
+        </button>
+      )}
+
         {/* RAM */}
         <div className="metric">
           <div className="metric-header">
@@ -129,6 +141,160 @@ function AgentCard({ agent }) {
       <div className="last-seen">
         Last update: {timeSince(agent.lastSeen)}
       </div>
+
+      {/* Expanded detail panel */}
+      {expanded && hasInventory && (
+        <div className="detail-panel">
+          {/* Machine */}
+          <div className="detail-section">
+            <h4>MACHINE</h4>
+            <table>
+              <tbody>
+                <tr><td>Type</td><td>{inv.machineClass}</td></tr>
+                <tr><td>Manufacturer</td><td>{inv.manufacturer || 'Unknown'}</td></tr>
+                <tr><td>Model</td><td>{inv.model || 'Unknown'}</td></tr>
+                <tr><td>Version</td><td>{inv.version || '—'}</td></tr>
+                <tr><td>Serial</td><td>{inv.serial && inv.serial !== '-' ? inv.serial : '—'}</td></tr>
+                <tr><td>OS</td><td>{inv.os}</td></tr>
+                <tr><td>Release Year</td><td>{inv.releaseYear || 'Unknown'}</td></tr>
+                <tr><td>Age</td><td>{inv.age != null ? `${inv.age} year${inv.age !== 1 ? 's' : ''}` : 'Unknown'}</td></tr>
+                <tr><td>Uptime</td><td>{formatUptime(inv.uptime)}</td></tr>
+                <tr><td>Display</td><td>{inv.display?.resolution}{inv.display?.size ? ` (${inv.display.size})` : ''}</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* CPU */}
+          {inv.cpu?.brand && (
+            <div className="detail-section">
+              <h4>CPU</h4>
+              <table>
+                <tbody>
+                  <tr><td>Model</td><td>{inv.cpu.brand}</td></tr>
+                  <tr><td>Cores / Threads</td><td>{inv.cpu.cores}C / {inv.cpu.threads}T</td></tr>
+                  <tr><td>Base Clock</td><td>{inv.cpu.speed} GHz</td></tr>
+                  <tr><td>Temperature</td><td>{inv.cpu.temperature != null ? `${inv.cpu.temperature}°C` : 'N/A'}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Memory */}
+          {inv.ram?.total > 0 && (
+            <div className="detail-section">
+              <h4>MEMORY</h4>
+              <table>
+                <tbody>
+                  <tr><td>Total</td><td>{Math.round(inv.ram.total / (1024 ** 3))} GB</td></tr>
+                  <tr><td>Type</td><td>{inv.ram.type || 'Unknown'}</td></tr>
+                  {inv.ram.speed ? <tr><td>Speed</td><td>{inv.ram.speed} MHz</td></tr> : null}
+                  {inv.ram.formFactor ? <tr><td>Form Factor</td><td>{inv.ram.formFactor}</td></tr> : null}
+                  {inv.ram.manufacturer ? <tr><td>Manufacturer</td><td>{inv.ram.manufacturer}</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* GPU */}
+          {inv.gpu?.model && inv.gpu.model !== 'Unknown' && (
+            <div className="detail-section">
+              <h4>GPU</h4>
+              <table>
+                <tbody>
+                  <tr><td>Model</td><td>{inv.gpu.model}</td></tr>
+                  <tr><td>VRAM</td><td>{inv.gpu.vram > 0 ? `${inv.gpu.vram} MB` : 'Shared'}</td></tr>
+                  {inv.gpu.vendor ? <tr><td>Vendor</td><td>{inv.gpu.vendor}</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Storage */}
+          {storageDetails.length > 0 && (
+            <div className="detail-section">
+              <h4>STORAGE</h4>
+              {storageSummary.map((line, i) => (
+                <p key={i} className="storage-summary-line">{line}</p>
+              ))}
+              <table className="storage-table">
+                <thead><tr><th>Type</th><th>Name</th><th>Size</th><th>Used</th><th>Usage</th></tr></thead>
+                <tbody>
+                  {storageDetails.map((d, i) => {
+                    const pct = d.percent;
+                    const hasPct = pct != null && Number.isFinite(Number(pct));
+                    return (
+                      <tr key={i}>
+                        <td>{d.type}</td>
+                        <td>{d.name}</td>
+                        <td>{d.size}</td>
+                        <td>{hasPct ? `${pct}%` : '—'}</td>
+                        <td>
+                          {hasPct ? (
+                            <div className="progress-bar progress-bar-sm">
+                              <div className={`progress-fill ${getMetricClass(pct)}`} style={{ width: `${Math.min(Math.max(pct, 0), 100)}%` }}></div>
+                            </div>
+                          ) : (
+                            <span className="storage-na">Unavailable</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Battery */}
+          {inv.battery?.hasBattery && (
+            <div className="detail-section">
+              <h4>BATTERY</h4>
+              <table>
+                <tbody>
+                  <tr><td>Charge</td><td>{inv.battery.percent != null ? `${inv.battery.percent}%` : 'N/A'}</td></tr>
+                  <tr><td>Status</td><td>{inv.battery.isCharging == null ? 'Unknown' : inv.battery.isCharging ? 'Charging ⚡' : 'Not charging'}</td></tr>
+                  <tr><td>Health</td><td>{inv.battery.health != null ? `${inv.battery.health}%` : 'N/A'}</td></tr>
+                  <tr><td>Cycles</td><td>{inv.battery.cycleCount != null ? inv.battery.cycleCount : 'Unsupported'}</td></tr>
+                  {inv.battery.designCapacity != null ? (
+                    <tr><td>Design Capacity</td><td>{inv.battery.designCapacity} Wh</td></tr>
+                  ) : null}
+                  {inv.battery.fullChargeCapacity != null ? (
+                    <tr><td>Full Charge Capacity</td><td>{inv.battery.fullChargeCapacity} Wh</td></tr>
+                  ) : null}
+                  {inv.battery.voltage != null ? (
+                    <tr><td>Voltage</td><td>{inv.battery.voltage}V</td></tr>
+                  ) : null}
+                  {inv.battery.chemistry ? (
+                    <tr><td>Chemistry</td><td>{inv.battery.chemistry}</td></tr>
+                  ) : null}
+                  {inv.battery.serial ? (
+                    <tr><td>Serial</td><td>{inv.battery.serial}</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Network */}
+          {inv.network?.ip && (
+            <div className="detail-section">
+              <h4>NETWORK</h4>
+              <table>
+                <tbody>
+                  <tr><td>IP</td><td>{inv.network.ip}</td></tr>
+                  {inv.network.mac ? <tr><td>MAC</td><td>{inv.network.mac}</td></tr> : null}
+                  <tr><td>Type</td><td>{inv.network.type}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Inventory loaded hint */}
+      {!expanded && hasInventory && (
+        <div className="inventory-loaded-hint">Inventory loaded — click ▼ Show Details</div>
+      )}
     </div>
   );
 }

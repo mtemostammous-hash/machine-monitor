@@ -218,6 +218,50 @@ body {
   background-color: #f85149;
 }
 
+/* ─── Details Toggle Button ────────────────────────────────── */
+.btn-details {
+  display: inline-block;
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #58a6ff;
+  font-size: 0.75rem;
+  padding: 5px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  font-family: inherit;
+  line-height: 1.4;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.btn-details:hover {
+  background: #1c2333;
+  border-color: #58a6ff;
+}
+
+.btn-details:active {
+  background: #21262d;
+  border-color: #58a6ff;
+}
+
+.btn-details:focus-visible {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.25);
+}
+
+/* ─── Inventory Loaded Hint ─────────────────────────────────── */
+.inventory-loaded-hint {
+  text-align: center;
+  font-size: 0.72rem;
+  color: #484f58;
+  margin-top: 8px;
+  font-style: italic;
+  cursor: default;
+  user-select: none;
+}
+
 /* ─── Last Seen ─────────────────────────────────────────────── */
 .last-seen {
   margin-top: 15px;
