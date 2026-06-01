@@ -45,7 +45,7 @@ try {
     const oldPid = parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10);
     if (!isNaN(oldPid)) {
       try {
-        execSync(`powershell -NoProfile -Command "Get-Process -Id ${oldPid} -ErrorAction Stop | Out-Null"`, { timeout: 3000 });
+        execSync(`powershell -NoProfile -Command "Get-Process -Id ${oldPid} -ErrorAction Stop | Out-Null"`, { timeout: 3000, windowsHide: true });
         console.error(`[agent] ABORT: another agent is already running (PID ${oldPid})`);
         process.exit(0);
       } catch {
@@ -169,7 +169,7 @@ function getWindowsSystemTemp() {
     '} else { $null }'
   ].join('\n');
   try {
-    const raw = execSync(`powershell -NoProfile -Command "${ps1.replace(/"/g, '\\"')}"`, { timeout: 5000 }).toString().trim();
+    const raw = execSync(`powershell -NoProfile -Command "${ps1.replace(/"/g, '\\"')}"`, { timeout: 5000, windowsHide: true }).toString().trim();
     const val = parseFloat(raw);
     return isNaN(val) ? null : val;
   } catch {
