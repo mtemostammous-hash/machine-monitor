@@ -1,4 +1,30 @@
+# Dependencies
 node_modules/
-*.log
-/tmp/
+package-lock.json
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# Runtime files
+agent/agent.pid
+agent/agent_launch.log
+agent/watchdog.log
+agent/agent_error.log
+
+# Local-only startup launchers
+agent/diag/
+agent/silent_start.vbs

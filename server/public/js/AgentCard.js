@@ -174,6 +174,9 @@ function AgentCard({ agent }) {
                   <tr><td>Cores / Threads</td><td>{inv.cpu.cores}C / {inv.cpu.threads}T</td></tr>
                   <tr><td>Base Clock</td><td>{inv.cpu.speed} GHz</td></tr>
                   <tr><td>Temperature</td><td>{inv.cpu.temperature != null ? `${inv.cpu.temperature}°C` : 'N/A'}</td></tr>
+                  {inv.systemTemp != null && !isNaN(inv.systemTemp) && (
+                    <tr><td>System Temp</td><td>{inv.systemTemp}°C</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>

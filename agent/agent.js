@@ -23,6 +23,8 @@
 const io = require('socket.io-client');
 const si = require('systeminformation');
 const { execSync } = require('child_process');
+const os = require('os');
+const fs = require('fs');
 
 // ─── Configuration ────────────────────────────────────────────
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
@@ -30,6 +32,67 @@ const AGENT_NAME = process.env.AGENT_NAME || '';
 const METRICS_INTERVAL = 5000;  // 5 seconds between metric updates
 const INVENTORY_INTERVAL = 60000; // 60 seconds between inventory refreshes
 const CPU_TEMP_INTERVAL = 30000; // 30 seconds between CPU temperature refreshes
+const IS_WINDOWS = process.platform === 'win32';
+
+// ═══════════════════════════════════════════════════════════════
+// Startup: clean stale PID, write PID, log config, register shutdown handlers
+// ═══════════════════════════════════════════════════════════════
+const PID_FILE = __dirname + '\\agent.pid';
+
+// Clean stale PID file on startup
+try {
+  if (fs.existsSync(PID_FILE)) {
+    const oldPid = parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10);
+    if (!isNaN(oldPid)) {
+      try {
+        execSync(`powershell -NoProfile -Command "Get-Process -Id ${oldPid} -ErrorAction Stop | Out-Null"`, { timeout: 3000 });
+        console.error(`[agent] ABORT: another agent is already running (PID ${oldPid})`);
+        process.exit(0);
+      } catch {
+        console.log(`[agent] Cleaned stale PID file (PID ${oldPid} was dead)`);
+        fs.unlinkSync(PID_FILE);
+      }
+    } else {
+      fs.unlinkSync(PID_FILE);
+    }
+  }
+} catch (e) {
+  // Non-critical — continue
+}
+
+fs.writeFileSync(PID_FILE, String(process.pid), 'utf8');
+
+const startupMsg = [
+  '',
+  '══════════════════════════════════════════════════',
+  `[agent] STARTUP  ${new Date().toISOString()}`,
+  `[agent] PID      ${process.pid}`,
+  `[agent] SERVER   ${SERVER_URL}`,
+  `[agent] HOST     ${os.hostname()}`,
+  `[agent] OS       ${os.platform()} ${os.release()}`,
+  `[agent] CPU      ${os.cpus()[0]?.model || 'unknown'}`,
+  `[agent] RAM      ${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GB`,
+  `[agent] VERSION  Node ${process.version}`,
+  '══════════════════════════════════════════════════',
+].join('\n');
+console.log(startupMsg);
+fs.appendFileSync(__dirname + '\\agent.log', '\n' + startupMsg + '\n');
+
+// Cleanup PID on any exit
+function cleanup() {
+  try { fs.unlinkSync(PID_FILE); } catch (e) { /* ignore */ }
+}
+process.on('exit', cleanup);
+process.on('SIGINT', () => { cleanup(); process.exit(0); });
+process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+process.on('uncaughtException', (err) => {
+  console.error('[agent] UNCAUGHT EXCEPTION: ' + err.message);
+  console.error(err.stack);
+  fs.appendFileSync(__dirname + '\\agent.log',
+    `[${new Date().toISOString()}] UNCAUGHT: ${err.message}\n${err.stack}\n`);
+  cleanup();
+  process.exit(1);
+});
 
 // ─── Helper: Lookup table for systeminformation ─────────────────
 // Maps manufacturer/model strings to estimated release years
@@ -87,6 +150,31 @@ function parseReleaseYearFromVersion(version) {
   if (fallback) return parseInt(fallback[1], 10);
 
   return null;
+}
+
+// ─── Windows ACPI Thermal Zone ──────────────────────────────────
+// Returns motherboard/ACPI thermal zone temp in °C (NOT CPU package).
+// Win32_PerfFormattedData returns Kelvin; we convert to Celsius.
+function getWindowsSystemTemp() {
+  if (!IS_WINDOWS) return null;
+  const ps1 = [
+    '$tz = Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation -ErrorAction SilentlyContinue',
+    'if ($tz) {',
+    '  $values = @()',
+    '  foreach ($t in $tz) {',
+    '    if ($t.HighPrecisionTemperature) { $values += [math]::Round($t.HighPrecisionTemperature / 10 - 273.15, 1) }',
+    '    elseif ($t.Temperature) { $values += [math]::Round($t.Temperature - 273.15, 1) }',
+    '  }',
+    '  if ($values.Count -gt 0) { ($values | Measure-Object -Average).Average.ToString("F1") } else { $null }',
+    '} else { $null }'
+  ].join('\n');
+  try {
+    const raw = execSync(`powershell -NoProfile -Command "${ps1.replace(/"/g, '\\"')}"`, { timeout: 5000 }).toString().trim();
+    const val = parseFloat(raw);
+    return isNaN(val) ? null : val;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Collect System Metrics ───────────────────────────────────
@@ -396,6 +484,7 @@ async function collectInventory() {
       display: displayInventory,
       uptime,
       cpuTemp: cpuTempState,
+      systemTemp: getWindowsSystemTemp(),
       collectedAt: Date.now()
     };
 
