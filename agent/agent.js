@@ -22,6 +22,7 @@
 
 const io = require('socket.io-client');
 const si = require('systeminformation');
+const { execSync } = require('child_process');
 
 // ─── Configuration ────────────────────────────────────────────
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
@@ -42,6 +43,14 @@ function estimateReleaseYear(manufacturer, model) {
   if (m.includes('10700') || m.includes('10900') || m.includes('3900X') || m.includes('3700X')) return 2020;
   if (m.includes('9900') || m.includes('9700') || m.includes('2700X')) return 2018;
   if (m.includes('ROG') || m.includes('STRIX')) return 2020;
+  // Lenovo IdeaPad laptops — G50-80 shipped with 5th-gen Broadwell (2015)
+  if (m.includes('IDEAPAD') || m.includes('G50-80') || m.includes('5500U')) return 2015;
+  // Intel generation inference from CPU model numbers inside the string
+  if (m.includes('12900') || m.includes('5900X') || m.includes('5800X')) return 2021;
+  // Broadwell (5th gen, 2014-2015) — covers i5/i7-5xxxU
+  if (/\b5[5-9]00U\b/.test(m) || m.includes('5600U') || m.includes('5500U')) return 2015;
+  // Haswell (4th gen, 2013-2014) — covers i5/i7-4xxxU
+  if (/\b4[5-9]00U\b/.test(m) || m.includes('4500U') || m.includes('4200U')) return 2014;
   return null;
 }
 
@@ -144,7 +153,17 @@ async function collectInventory() {
     const manufacturer = sysInfo.manufacturer || cpuData.manufacturer || '';
     const model = sysInfo.model || cpuData.model || '';
     const version = sysInfo.version || model;
-    const releaseYear = sysInfo.releaseYear || parseReleaseYearFromVersion(version) || estimateReleaseYear(manufacturer + ' ' + model);
+    // Try multiple string combos for release year inference — Linux si.system()
+    // model is often a bare product code ("80E5") while version is the human name
+    // ("Lenovo G50-80"), and CPU brand contains the generation ("i7-5500U").
+    const cpuBrand = cpuData.brand || cpu.brand || '';
+    const releaseYear = sysInfo.releaseYear
+      || parseReleaseYearFromVersion(version)
+      || parseReleaseYearFromVersion(model + ' ' + version)
+      || estimateReleaseYear(manufacturer + ' ' + version)
+      || estimateReleaseYear(manufacturer + ' ' + model)
+      || estimateReleaseYear(cpuBrand)
+      || estimateReleaseYear(manufacturer + ' ' + cpuBrand);
     const age = releaseYear ? now - releaseYear : null;
 
     // Determine machine class
@@ -325,6 +344,21 @@ async function collectInventory() {
       }
     }
 
+    // ─── Serial fallback for Linux ──
+    // si.system() returns "-" or null for serial on many Linux laptops.
+    // Fall back to dmidecode (passwordless via /etc/sudoers.d/dmidecode).
+    let resolvedSerial = sysInfo.serial || null;
+    if (process.platform === 'linux' && (!resolvedSerial || resolvedSerial === '-' || resolvedSerial === 'Unknown')) {
+      try {
+        const dmiserial = execSync('sudo -n dmidecode -s system-serial-number 2>/dev/null', { timeout: 5000 }).toString().trim();
+        if (dmiserial && dmiserial !== 'Not Specified' && dmiserial !== 'Unknown' && dmiserial !== 'Default string') {
+          resolvedSerial = dmiserial;
+        }
+      } catch (e) {
+        // dmidecode failed — keep original value
+      }
+    }
+
     // ── Build full inventory object ──
     // On macOS, apply the live cpuTempState to cpuInfo.temperature
     // so the dashboard (which reads inv.cpu.temperature) gets the fresh value.
@@ -332,14 +366,25 @@ async function collectInventory() {
       cpuInfo.temperature = cpuTempState.value;
     }
 
+    // On Linux, si.system().model is often a bare product code ("80E5")
+    // while version is the human-readable name ("Lenovo G50-80").
+    // Prefer version as model when version looks more descriptive.
+    let displayModel = model;
+    if (process.platform === 'linux' && version && model !== version) {
+      // Heuristic: if version is longer and contains a space (multi-word), use it
+      if (version.length > model.length && version.includes(' ')) {
+        displayModel = version;
+      }
+    }
+
     return {
       hostname: AGENT_NAME || osData.hostname || require('os').hostname(),
       os: `${osData.distro || osData.platform} ${osData.release}`.trim(),
       machineClass,
       manufacturer,
-      model,
+      model: displayModel,
       version,
-      serial: sysInfo.serial || null,
+      serial: resolvedSerial,
       releaseYear,
       age,
       cpu: cpuInfo,
