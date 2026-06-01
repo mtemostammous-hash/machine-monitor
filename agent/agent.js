@@ -393,7 +393,8 @@ const socket = io(SERVER_URL, {
   reconnectionAttempts: Infinity,
   reconnectionDelay: 2000,
   reconnectionDelayMax: 30000,
-  timeout: 10000
+  timeout: 10000,
+  transports: ["websocket"]
 });
 
 // ─── Connection Events ────────────────────────────────────────
